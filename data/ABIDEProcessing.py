@@ -5,6 +5,7 @@ import os
 import numpy as np
 from pathlib import Path
 import scipy.io as sio
+from tqdm import tqdm
 
 ## ROOT_FOLDER
 ROOT_FOLDER = Path(__file__).parent.parent.absolute()
@@ -57,8 +58,7 @@ def get_timeseries(subject_IDs, FileNames):
 
     timeseries = []
 
-    for idx, filename in enumerate(FileNames) : 
-        print(f"Reading time series for subject {subject_IDs[idx]}")
+    for _, filename in tqdm(enumerate(FileNames), total = len(FileNames), desc = "Loading time series") : 
         timeseries.append(np.loadtxt(DATA_FOLDER + filename[0], skiprows=0))
     
     return timeseries
@@ -76,18 +76,13 @@ def get_subject_connectivity(time_series, subjectID, kind = 'correlation', save 
 
     if os.path.exists(save_directory) == False :
         os.makedirs(save_directory)
-        print("The saving directory for connectivity matrices is created")
-    else : 
-        print("The saving directory for connecitivity matrices already exists")
 
     # Now, we can compute the connectivity matrix for the subject
-    print(f"Computing the connectivity matrix for subject {subjectID}")
-
     conn_measure = connectome.ConnectivityMeasure(kind = kind)
     connectivity_mat = conn_measure.fit_transform([time_series])[0]
 
     if save :
-        subject_file = os.path.join(save_directory, subjectID + '_' + kind + '_' + '.mat' )
+        subject_file = os.path.join(save_directory, 'sub_' +subjectID + '_' + kind + '.mat' )
         sio.savemat(subject_file, {'connectivity' : connectivity_mat})
 
     return connectivity_mat
