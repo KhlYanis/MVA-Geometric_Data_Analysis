@@ -3,13 +3,13 @@ from nilearn.datasets import fetch_abide_pcp
 from nilearn import connectome
 import os
 import numpy as np
+from pathlib import Path
 
-## ROOT_FOLDER : To change 
-ROOT_FOLDER = 'c:\\Users\\yanis\\OneDrive\\Bureau\\M2 MVA\\S1\\Geometric Data Analysis\\MVA-Geometric_Data_Analysis\\'
+## ROOT_FOLDER
+ROOT_FOLDER = Path(__file__).parent.parent.absolute()
 ## DATA_FOLDER : Where we can find the imaging dataset
 DATA_FOLDER = os.path.join(ROOT_FOLDER, 'data\\ABIDE_dataset\\ABIDE_pcp\\cpac\\filt_noglobal\\')
-
-##
+## Path for the phenotypic dataset (.csv)
 phenotypic_data_path = os.path.join(ROOT_FOLDER, 'data\\ABIDE_dataset\\ABIDE_pcp\\Phenotypic_V1_0b_preprocessed1.csv')
 
 
@@ -44,8 +44,9 @@ def fetch_filenames(subject_IDs):
     return filenames
 
 
-def get_timeseries(FileNames):
+def get_timeseries(subject_IDs, FileNames):
     """
+        subject_IDs : list of the subject IDs
         FileNames : list of the subjects associated filenames
 
     returns:
@@ -54,7 +55,8 @@ def get_timeseries(FileNames):
 
     timeseries = []
 
-    for _, filename in enumerate(FileNames) : 
+    for idx, filename in enumerate(FileNames) : 
+        print(f"Reading time series for subject {subject_IDs[idx]}")
         timeseries.append(np.loadtxt(DATA_FOLDER + filename[0], skiprows=0))
     
     return timeseries
