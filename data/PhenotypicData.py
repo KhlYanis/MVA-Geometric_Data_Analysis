@@ -24,15 +24,16 @@ class PhenoDataProcessing :
 
         return df
     
-    def get_subject_labels(self, subjectIDs):
+    def get_subject_labels(self, subjectIDs, column_names):
         # Convert the subjectIDs from str to int 
         id_list = list(map(int, subjectIDs))
 
         # Setup the label dictionary
         label_dict = {}
 
-        for id in id_list:
-            label_dict[id] = self.pheno_df_all[self.pheno_df_all['SUB_ID'] == id]['DX_GROUP'].values
+        for id in subjectIDs:
+            label_dict[id] = {}
+            for c_name in column_names :
+                label_dict[id][c_name] = self.pheno_df_all[self.pheno_df_all['SUB_ID'] == int(id)][c_name].values[0]
 
         return label_dict
-    

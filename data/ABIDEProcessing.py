@@ -82,7 +82,33 @@ def get_subject_connectivity(time_series, subjectID, kind = 'correlation', save 
     connectivity_mat = conn_measure.fit_transform([time_series])[0]
 
     if save :
-        subject_file = os.path.join(save_directory, 'sub_' +subjectID + '_' + kind + '.mat' )
+        subject_file = os.path.join(save_directory, 'sub_' + subjectID + '_' + kind + '.mat' )
         sio.savemat(subject_file, {'connectivity' : connectivity_mat})
 
     return connectivity_mat
+
+
+def get_connectivity_networks(subjectIDs, kind = 'correlation'):
+    # Initialize the list to stock the connectivity matrices
+    all_networks = []
+    # Get the path of the folder where the connectivity matrices are stored
+    cm_folder = os.path.join(ROOT_FOLDER, 'data', 'Connectivity_matrices')
+
+    for subjectID in subjectIDs :
+        # Get the path of the connectivity matric of subject i
+        cm_path = os.path.join(cm_folder, 'sub_' + subjectID + '_' + kind + '.mat')
+        # Retrieve the connectivity matrix
+        c_matrix = sio.loadmat(cm_path)['connectivity']
+        # Append the connectivity matrix to the list
+        all_networks.append(c_matrix)
+
+    # Get the superior triangular part of the matrix
+    idx = np.triu_indices_from(all_networks[0], 1)
+    # Apply the Fisher transformation on each connectivity matrix
+    norm_networks = [np.arctanh(mat) for mat in all_networks]
+    # Vectorization of the network
+    vec_networks = [mat[idx] for mat in norm_networks]
+    # Build the connectivity network
+    matrix = np.vstack(vec_networks)
+
+    return matrix
