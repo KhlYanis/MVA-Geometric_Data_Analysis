@@ -24,7 +24,7 @@ class PhenoDataProcessing :
 
         return df
     
-    def get_subject_labels(self, subjectIDs, column_names):
+    def get_subject_info(self, subjectIDs, column_names):
         # Convert the subjectIDs from str to int 
         id_list = list(map(int, subjectIDs))
 

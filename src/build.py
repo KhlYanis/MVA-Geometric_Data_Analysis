@@ -3,6 +3,9 @@ import numpy as np
 from tqdm import tqdm
 import os
 import scipy.io as sio
+from sklearn.linear_model import RidgeClassifier
+from sklearn.feature_selection import RFE
+from scipy.spatial import distance
 
 
 """Class to build the adjacency matrix of our
@@ -10,15 +13,34 @@ import scipy.io as sio
 
 class Adj_matrix : 
 
-    def __init__(self, df, subjectIDs, root_folder):
+    def __init__(self, subjectIDs, root_folder):
         super().__init__()
 
         self.root_folder = root_folder
-        # Setup the DataFrame and the subject IDs
-        self.df = df
-        self.subjectIDs = subjectIDs
 
-        self.nb_subjects = len(subjectIDs)
+        # Setup the subject IDs
+        self.subjectIDs = subjectIDs
+        self.nb_subjects = len(subjectIDs) 
+
+        ## PHENOTYPIC DATA
+        # Setup the path of the phenotype DataFrame
+        path_to_data = os.path.join(root_folder, 'data', 'ABIDE_dataset',
+                                          'ABIDE_pcp', 'Phenotypic_V1_0b_preprocessed1.csv')
+        
+        # Retrieve the complete phenotype DataFrame
+        self.pheno_df_all = pd.read_csv(path_to_data)
+
+        # Build the DataFrame for the relevant subjects
+        self.df = self.extract_subjects(self.subjectIDs)
+
+    def extract_subjects(self, subjectIDs):
+        # Convert the subjectIDs from str to int 
+        id_list = list(map(int, subjectIDs))
+
+        # Get the DataFrame for the relevant subjects
+        df = self.pheno_df_all[self.pheno_df_all['SUB_ID'].isin(id_list)]
+
+        return df
 
     def retrieve_connectivity_matrices(self, kind = 'correlation'):
         # Initialize the list to stock the connectivity matrices
@@ -26,7 +48,7 @@ class Adj_matrix :
         # Get the path of the folder where the connectivity matrices are stored
         cm_folder = os.path.join(self.root_folder, 'data', 'Connectivity_matrices')
 
-        for subjectID in self.subjectIDs :
+        for subjectID in tqdm(self.subjectIDs, total = self.nb_subjects, desc = "Retrieving the connectivity matrices") :
             # Get the path of the connectivity matric of subject i
             cm_path = os.path.join(cm_folder, 'sub_' + subjectID + '_' + kind + '.mat')
             # Retrieve the connectivity matrix
@@ -46,15 +68,15 @@ class Adj_matrix :
         # Vectorization of the network
         vec_networks = [mat[idx] for mat in norm_networks]
         # Build the connectivity network
-        matrix = np.vstack(vec_networks)
+        feat_v_matrix = np.vstack(vec_networks)
 
-        return matrix
+        return feat_v_matrix
 
     def score_mat_on_phenotypic_attr(self):
         # Initialize the matrix
         self.score_mat = np.zeros((self.nb_subjects, self.nb_subjects))
 
-        for i, subject_id in tqdm(enumerate(self.subjectIDs), total = self.nb_subjects, desc = "Building Adjacency matrix"):
+        for i, subject_id in tqdm(enumerate(self.subjectIDs), total = self.nb_subjects, desc = "Building Score matrix"):
             # Row associated to subject "i"
             row_i = self.df[self.df['SUB_ID'] == int(subject_id)]
 
@@ -78,13 +100,50 @@ class Adj_matrix :
         return self.score_mat
 
     
-    ## TO BE COMPLETED
-    def feature_selection(self, n_features):
-        return 
+    def feature_selection(self, feat_vectors, n_features):
+
+        # Initialize the Ridge Classifier
+        estimator = RidgeClassifier()
+        selector = RFE(estimator, n_features_to_select = n_features, step = 100, verbose = 1)
+
+        X = feat_vectors
+        Y = self.df['DX_GROUP']
+        selector = selector.fit(X, Y.ravel())
+
+        # Selection of the features
+        features = selector.transform(feat_vectors)
+
+        return features
     
     def compute_similarity_value(self):
-        return
+
+        # Get the feature vectors
+        feature_vectors = self.get_feature_vectors()
+
+        # Get the similarity matrices with the $n_features$ most relevant features
+        red_sim_mat = self.feature_selection(feature_vectors, n_features = 100)
+
+        # Compute the correlation between each of them 
+        distv = distance.pdist(red_sim_mat, metric='correlation')
+
+        # Convert to a square symmetric distance matrix
+        dist = distance.squareform(distv)
+        sigma = np.mean(dist)
+        # Get affinity from similarity matrix
+        sparse_graph = np.exp(- dist ** 2 / (2 * sigma ** 2))
+
+        return sparse_graph
     
     def compute_adjacency_matrix(self):
-        return
+        # Retrieve the score matrix on the phenotypic features 
+        print("Computing the score matrix on the phenotypic features ...")
+        score = self.score_mat_on_phenotypic_attr()
+        print("DONE")
+
+        # Retrieve the correlation matrix on the similarities
+        print("Computing the correlation matrix on the similarities ...")
+        sim_matrix_corr = self.compute_similarity_value()
+        print("DONE")
+
+        return score * sim_matrix_corr
     
