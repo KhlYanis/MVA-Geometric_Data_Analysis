@@ -111,7 +111,7 @@ class GCN (torch.nn.Module) :
 
 
 class ChebConvLayer(torch.nn.Module):
-    def __init__(self, args, in_features, out_features, adjacency_matrix, K = 3):
+    def __init__(self, args, adjacency_matrix, K, in_features, out_features = 1):
         super(ChebConvLayer, self).__init__()
 
         self.device = "cuda" if args.use_cuda else "cpu"
@@ -138,7 +138,7 @@ class ChebConvLayer(torch.nn.Module):
             nn.Linear(self.input_dim, self.output_dim).to(self.device) for _ in range(self.K)
         ])
         
-        self.bias = torch.nn.Parameter(torch.zeros(self.output_dim))
+        self.bias = torch.nn.Parameter(torch.zeros(self.output_dim)).to(self.device)
 
         ## Check if the number of layers and polynomials correctly match
         if len(self.ChebPolynomials) != len(self.layers):
@@ -184,3 +184,52 @@ class ChebConvLayer(torch.nn.Module):
         output += self.bias
 
         return output
+    
+
+class ChebGCN (torch.nn.Module):
+
+    def __init__(self, args, in_features, out_features, 
+                 adjacency_matrix):
+        super(ChebGCN, self).__init__()
+
+        self.device = "cuda" if args.use_cuda else "cpu"
+
+        self.input_dim = in_features
+        self.output_dim = out_features
+
+        self.K = args.K
+        self.dropout_rate = args.dropout_rate
+
+        self.adjacency_matrix = adjacency_matrix.to(self.device)
+
+        ## Building the Chebyshev GCN layers
+        self.layers = nn.ModuleList()
+
+        # First layer (input to hidden)
+        self.layers.append(
+            ChebConvLayer(args, in_features, args.hidden_dim, self.adjacency_matrix, self.K)
+        )
+
+        # Hidden layers
+        for _ in range(args.num_layers - 2):
+            self.layers.append(
+                ChebConvLayer(args, args.hidden_dim, args.hidden_dim, self.adjacency_matrix, self.K)
+            )
+
+        # Output layer (hidden to output)
+        self.layers.append(
+            ChebConvLayer(args, args.hidden_dim, out_features, self.adjacency_matrix, self.K)
+        )
+
+    def forward(self, x):
+        
+        x = x.to(self.device)
+
+        for i, layer in enumerate(self.layers):
+            x = layer(x)  # Apply ChebConvLayer
+            if i < len(self.layers) - 1:  # Apply dropout and activation for all but the last layer
+                x = torch.nn.functional.relu(x)
+                x = torch.nn.functional.dropout(x, self.dropout_rate, training=self.training)
+
+        return x
+
