@@ -13,7 +13,7 @@ from scipy.spatial import distance
 
 class Adj_matrix : 
 
-    def __init__(self, subjectIDs, root_folder):
+    def __init__(self, subjectIDs, root_folder, sort_var = 'SITE_ID'):
         super().__init__()
 
         self.root_folder = root_folder
@@ -31,14 +31,17 @@ class Adj_matrix :
         self.pheno_df_all = pd.read_csv(path_to_data)
 
         # Build the DataFrame for the relevant subjects
-        self.df = self.extract_subjects(self.subjectIDs)
+        self.df = self.extract_subjects(self.subjectIDs, sort_var)
 
-    def extract_subjects(self, subjectIDs):
+    def extract_subjects(self, subjectIDs, sort_variable = 'SITE_ID'):
         # Convert the subjectIDs from str to int 
         id_list = list(map(int, subjectIDs))
 
         # Get the DataFrame for the relevant subjects
         df = self.pheno_df_all[self.pheno_df_all['SUB_ID'].isin(id_list)]
+        df = df.sort_values(by = sort_variable)
+
+        self.subjectIDs = df['SUB_ID'].astype(str).tolist()
 
         return df
 
@@ -115,13 +118,13 @@ class Adj_matrix :
 
         return features
     
-    def compute_similarity_value(self):
+    def compute_similarity_value(self, nb_features):
 
         # Get the feature vectors
         feature_vectors = self.get_feature_vectors()
 
         # Get the similarity matrices with the $n_features$ most relevant features
-        red_sim_mat = self.feature_selection(feature_vectors, n_features = 100)
+        red_sim_mat = self.feature_selection(feature_vectors, n_features = nb_features)
 
         # Compute the correlation between each of them 
         distv = distance.pdist(red_sim_mat, metric='correlation')
@@ -134,7 +137,7 @@ class Adj_matrix :
 
         return sparse_graph
     
-    def compute_adjacency_matrix(self):
+    def compute_adjacency_matrix(self, nb_features):
         # Retrieve the score matrix on the phenotypic features 
         print("Computing the score matrix on the phenotypic features ...")
         score = self.score_mat_on_phenotypic_attr()
@@ -142,7 +145,7 @@ class Adj_matrix :
 
         # Retrieve the correlation matrix on the similarities
         print("Computing the correlation matrix on the similarities ...")
-        sim_matrix_corr = self.compute_similarity_value()
+        sim_matrix_corr = self.compute_similarity_value(nb_features)
         print("DONE")
 
         return score * sim_matrix_corr
