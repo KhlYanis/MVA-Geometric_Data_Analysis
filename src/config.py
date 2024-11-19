@@ -12,14 +12,20 @@ def general_settings():
     parser.add_argument('--lr', type = float, default = 5e-3, metavar = 'LR',
                         help = 'learning rate (default : 5e-3)')
     
-    parser.add_argument('--wd', type = float, default = 5e-4 , metavar = 'L2 Regularization',
+    parser.add_argument('--wd', type = float, default = 5e-4 , metavar = 'L2_Regularization',
                         help = 'regularization paramrter (default : 5e-4) ')
     
     parser.add_argument('--n_epoch', type = int, default = 150, metavar = 'N_Epoch',
                         help = 'Number of training epochs') 
     
-    parser.add_argument('dropout_rate', type = float, default = 0.3, metavar = 'DropRate',
+    parser.add_argument('--dropout_rate', type = float, default = 0.3, metavar = 'DROPOUT_RATE',
                         help = 'Dropout rate')
+    
+    parser.add_argument('--C', type = int, default = 2000, metavar = 'NB_FEATURES',
+                        help = 'Number of selected features')
+    
+    parser.add_argument('--K', type = int, default = 3, metavar = 'K',
+                        help = 'Order of the Chebyshev polynomial expansion')
     
     args = parser.parse_args("")
 
