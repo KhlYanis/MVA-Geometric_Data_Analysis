@@ -5,11 +5,11 @@ import torch.nn.functional as func
 
 def compute_normalized_adj_matrix(adjacency_matrix, N, device):
         # Adjacency matrix with added self-connections
-        A_tilde = torch.add(adjacency_matrix, torch.eye(N))
+        A_tilde = torch.add(adjacency_matrix, torch.eye(N, device = device))
 
         # Compute D^{-1/2}
-        deg_v = torch.sum(adjacency_matrix, dim = 1) 
-        inv_sqrt_D = torch.diag(1./torch.sqrt(deg_v))
+        deg_v = torch.sum(adjacency_matrix, dim = 1).to(device) 
+        inv_sqrt_D = torch.diag(1./torch.sqrt(deg_v)).to(device)
 
         # Compute the normalized adjacency
         normalized_adjacency = torch.matmul(torch.matmul(inv_sqrt_D, A_tilde), inv_sqrt_D).to(device)
@@ -82,7 +82,7 @@ class GCN (torch.nn.Module) :
         ## ADJACENCY MATRIX :
         self.adjacency_matrix = adjacency_matrix.to(self.device)
         # Get the size of the adjacency matrix
-        self.N = self.adjacency_matrix.shape[0]
+        self.N = self.adjacency_matrix.size()[0]
 
         # Compute the normalized adjacency
         self.normalized_adj_matrix = compute_normalized_adj_matrix(self.adjacency_matrix, self.N, self.device)
@@ -122,7 +122,7 @@ class ChebConvLayer(torch.nn.Module):
 
         ## Adjacency matrix 
         self.adjacency_matrix = adjacency_matrix
-        self.N = self.adjacency_matrix.shape[0]
+        self.N = self.adjacency_matrix.size()[0]
         self.normalized_adjacency = compute_normalized_adj_matrix(self.adjacency_matrix, self.N, self.device)
         
         # Compute the L_tilde matrix
@@ -207,18 +207,18 @@ class ChebGCN (torch.nn.Module):
 
         # First layer (input to hidden)
         self.layers.append(
-            ChebConvLayer(args, in_features, args.hidden_dim, self.adjacency_matrix, self.K)
+            ChebConvLayer(args, self.adjacency_matrix, self.K, in_features = self.input_dim, out_features = args.hidden_dim)
         )
 
         # Hidden layers
         for _ in range(args.num_layers - 2):
             self.layers.append(
-                ChebConvLayer(args, args.hidden_dim, args.hidden_dim, self.adjacency_matrix, self.K)
+                ChebConvLayer(args, self.adjacency_matrix, self.K, args.hidden_dim, args.hidden_dim)
             )
 
         # Output layer (hidden to output)
         self.layers.append(
-            ChebConvLayer(args, args.hidden_dim, out_features, self.adjacency_matrix, self.K)
+            ChebConvLayer(args,self.adjacency_matrix, self.K, args.hidden_dim, out_features)
         )
 
     def forward(self, x):
