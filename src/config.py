@@ -9,7 +9,7 @@ def general_settings():
     parser.add_argument('--use_cuda', type = bool, default = False, metavar = 'CUDA',
                         help = 'if True, use GPU')
     
-    parser.add_argument('--lr', type = float, default = 5e-3, metavar = 'LR',
+    parser.add_argument('--lr', type = float, default = 1e-3, metavar = 'LR',
                         help = 'learning rate (default : 5e-3)')
     
     parser.add_argument('--wd', type = float, default = 5e-4 , metavar = 'L2_Regularization',

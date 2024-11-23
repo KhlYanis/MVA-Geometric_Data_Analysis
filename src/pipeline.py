@@ -62,9 +62,8 @@ class DataPipeline :
 
         return data_dict
 
-
 class TrainTestPipeline :
-    def __init__(self, args, data_dict, model, modelFileName, f_vect_type = "raw_inputs"):
+    def __init__(self, args, data_dict, model, modelFileName, f_vect_type = "raw_input"):
         super(TrainTestPipeline).__init__()
 
         # Setup the Pipeline device
@@ -75,11 +74,14 @@ class TrainTestPipeline :
         self.f_vect_type = "raw_inputs"
 
         # Retrieve the number of patients & features
-        self.N, self.nb_features = self.data_dict["adjacency_matrix"].size()
+        self.N, self.nb_features = self.data_dict["inputs"][f_vect_type].size()
 
         # Setup the model 
         self.model = model.to(self.device)
         self.modelFileName = modelFileName
+
+        # Select the inputs 
+        self.f_vect_type = f_vect_type
 
     def get_set_matrix(self, set_id):
         # Initialize a zero matrix of size [N, nb_features]
@@ -89,6 +91,18 @@ class TrainTestPipeline :
         mat[set_id] = self.data_dict["inputs"][self.f_vect_type][set_id]
 
         return mat
+    
+    def compute_accuracy(self, logits, set_idx):
+        # Pass through a sigmoid to get a probability
+        predicted_proba = func.sigmoid(logits[set_idx])
+
+        # Get the predicted label
+        pred_labels = (predicted_proba >= 0.5).long()
+
+        # Compute the accuracy
+        accuracy = torch.sum((pred_labels == self.data_dict["labels"][set_idx]))/len(set_idx)
+
+        return accuracy
 
 
     def NNTrain(self):
@@ -99,20 +113,21 @@ class TrainTestPipeline :
         # Train set
         train_idx = self.data_dict["train_idx"]
         self.train_set = self.get_set_matrix(set_id = train_idx)
-        self.trainLOSS = torch.zeros([self.args.n_epochs])
+        self.trainLOSS = torch.zeros([self.args.n_epoch])
+        self.trainAccuracy = torch.zeros([self.args.n_epoch])
     
         # Validation set
         val_idx = self.data_dict["val_idx"]
         self.val_set = self.get_set_matrix(set_id = val_idx)
-        self.valLoss = torch.zeros([self.args.n_epochs])
-        self.valAccuracy = torch.zeros([self.args.n_epochs])
+        self.valLoss = torch.zeros([self.args.n_epoch])
+        self.valAccuracy = torch.zeros([self.args.n_epoch])
 
         # Use Adam as an optimizer
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr = self.args.lr)
         # Use BCELoss as loss function
         self.loss_fn = nn.BCEWithLogitsLoss()
 
-        for epoch in tqdm(range(self.args.n_epoch)):
+        for epoch in range(self.args.n_epoch):
 
             #######################################
             ######### ---- TRAINING ---- ##########
@@ -122,10 +137,10 @@ class TrainTestPipeline :
             self.optimizer.zero_grad()
 
             # Forward the data through the neural network
-            train_logits = self.model(self.train_set)
+            train_logits = torch.squeeze(self.model(self.train_set))
 
             # Compute the loss then backpropagate
-            loss = self.loss_fn(train_logits[train_idx],self.data_dict["labels"][train_idx])
+            loss = self.loss_fn(train_logits[train_idx], self.data_dict["labels"][train_idx])
             loss.backward()
 
             # Save the training loss
@@ -134,6 +149,9 @@ class TrainTestPipeline :
             # Update the network parameters 
             self.optimizer.step()
 
+            # Compute and save the training accuracy
+            self.trainAccuracy[epoch] = self.compute_accuracy(train_logits, train_idx)
+
             #######################################
             ######## ---- EVALUATION ---- #########
             ####################################### 
@@ -141,24 +159,29 @@ class TrainTestPipeline :
 
             with torch.no_grad():
                 # Forward the validation data through the neural network
-                val_logits = self.model(self.val_set)
+                val_logits = torch.squeeze(self.model(self.val_set))
 
                 # Compute and save the loss on the validation set
                 val_loss = self.loss_fn(val_logits[val_idx], self.data_dict["labels"][val_idx])
                 self.valLoss[epoch] =  val_loss
                 
-                # Pass through a sigmoid to get the predicted class
-                pred_proba = func.sigmoid(val_logits).squeeze()
-                pred_labels = (pred_proba >= 0.5).long()
-
                 # Compute and save the accuracy on the validation set
-                self.valAccuracy[epoch] = torch.sum((pred_labels == self.data_dict["labels"][val_idx]))
+                self.valAccuracy[epoch] = self.compute_accuracy(val_logits, val_idx)
+            
+            print(f"Epoch {epoch} | Train Loss : {self.trainLOSS[epoch]} | Validation Loss : {self.valLoss[epoch]} | Validation accuracy : {self.valAccuracy[epoch]}")
 
         torch.save(self.model, self.modelFileName)
 
-        return [self.trainLOSS, self.valLoss, self.valAccuracy] 
+        return [self.trainLOSS, self.trainAccuracy, self.valLoss, self.valAccuracy] 
     
     def NNTest(self):
         ## Get the matrix associated to the test set
         self.test_set = self.get_set_matrix(set_id = self.data_dict["test_idx"])
 
+        ## Evaluate the model on the test set and compute the accuracy
+        self.model.eval()
+        test_logits = torch.squeeze(self.model(self.test_set))
+        
+        test_accuracy = self.compute_accuracy(test_logits, self.data_dict["test_idx"])
+
+        return test_accuracy
