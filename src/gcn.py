@@ -92,7 +92,7 @@ class GCN (torch.nn.Module) :
     
     def InitGCNBlock(self):
         self.gcn_layer1 = nn.Sequential(
-            DenseLayerGCN(self.input_dim, self.hidden_dim),
+            DenseLayerGCN(self.input_dim, self.hidden_dim, self.normalized_adj_matrix, use_activation = True),
             nn.Dropout(p = self.dropout_rate)
             ).to(self.device)
         
