@@ -3,6 +3,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 import scipy.io as sio
+from sklearn.decomposition import PCA
 from sklearn.linear_model import RidgeClassifier
 from sklearn.feature_selection import RFE
 from scipy.spatial import distance
@@ -102,29 +103,51 @@ class Adj_matrix :
 
         return self.score_mat
 
-    
-    def feature_selection(self, feat_vectors, n_features):
 
-        # Initialize the Ridge Classifier
-        estimator = RidgeClassifier()
-        selector = RFE(estimator, n_features_to_select = n_features, step = 100, verbose = 1)
+    def feature_selection(self, feat_vectors, n_features, method="rfe"):
+        """
+        Feature selection with either RFE or PCA.
+        
+        Parameters:
+        - feat_vectors (array-like): Feature vectors to be reduced.
+        - n_features (int): Number of features to select or retain.
+        - method (str): Feature selection method: 'rfe' for Recursive Feature Elimination (default), 
+        'pca' for Principal Component Analysis.
 
-        X = feat_vectors
-        Y = self.df['DX_GROUP']
-        selector = selector.fit(X, Y.ravel())
+        Returns:
+        - features (array-like): Transformed feature set with reduced dimensions.
+        """
+        if method == "rfe":
+            # Initialize the Ridge Classifier
+            estimator = RidgeClassifier()
+            selector = RFE(estimator, n_features_to_select=n_features, step=100, verbose=1)
 
-        # Selection of the features
-        features = selector.transform(feat_vectors)
+            X = feat_vectors
+            Y = self.df['DX_GROUP']
+            selector = selector.fit(X, Y.ravel())
+
+            # Select the features using RFE
+            features = selector.transform(feat_vectors)
+
+        elif method == "pca":
+            # Initialize PCA
+            pca = PCA(n_components=n_features)
+            features = pca.fit_transform(feat_vectors)
+            print(f"Explained variance ratio for {n_features} components: {pca.explained_variance_ratio_}")
+
+        else:
+            raise ValueError(f"Unknown method '{method}'. Supported methods: 'rfe', 'pca'.")
 
         return features
+
     
-    def compute_similarity_value(self, nb_features):
+    def compute_similarity_value(self, nb_features, method="rfe"):
 
         # Get the feature vectors
         feature_vectors = self.get_feature_vectors()
 
         # Get the similarity matrices with the $n_features$ most relevant features
-        red_sim_mat = self.feature_selection(feature_vectors, n_features = nb_features)
+        red_sim_mat = self.feature_selection(feature_vectors, n_features = nb_features, method=method)
 
         # Compute the correlation between each of them 
         distv = distance.pdist(red_sim_mat, metric='correlation')
@@ -137,7 +160,7 @@ class Adj_matrix :
 
         return sparse_graph
     
-    def compute_adjacency_matrix(self, nb_features):
+    def compute_adjacency_matrix(self, nb_features, method="rfe"):
         # Retrieve the score matrix on the phenotypic features 
         print("Computing the score matrix on the phenotypic features ...")
         score = self.score_mat_on_phenotypic_attr()
@@ -145,7 +168,7 @@ class Adj_matrix :
 
         # Retrieve the correlation matrix on the similarities
         print("Computing the correlation matrix on the similarities ...")
-        sim_matrix_corr = self.compute_similarity_value(nb_features)
+        sim_matrix_corr = self.compute_similarity_value(nb_features, method=method)
         print("DONE")
 
         return score * sim_matrix_corr
