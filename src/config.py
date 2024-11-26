@@ -27,10 +27,10 @@ def general_settings():
     parser.add_argument('--K', type = int, default = 3, metavar = 'K',
                         help = 'Order of the Chebyshev polynomial expansion')
     
-    parser.add_argument('--num_layers', type = int, default = 1, metavar = 'NB_LAYERS',
+    parser.add_argument('--num_layers', type = int, default = 3, metavar = 'NB_LAYERS',
                         help = 'Number of GCN layers')
     
-    parser.add_argument('--hidden_dim', type = int, default = 10, metavar = 'HIDDEN_DIM',
+    parser.add_argument('--hidden_dim', type = int, default = 16, metavar = 'HIDDEN_DIM',
                         help = "Hidden layer dimension")
     
     args = parser.parse_args("")

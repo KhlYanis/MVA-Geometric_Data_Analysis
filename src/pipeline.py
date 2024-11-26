@@ -5,6 +5,7 @@ from utils.preprocess import preprocess_features
 from tqdm import tqdm
 import torch.nn.functional as func
 from torchmetrics import Accuracy
+import os 
 
 
 
@@ -63,7 +64,7 @@ class DataPipeline :
         return data_dict
 
 class TrainTestPipeline :
-    def __init__(self, args, data_dict, model, modelFileName, f_vect_type = "raw_input"):
+    def __init__(self, args, data_dict, model, modelName, ROOT_FOLDER, f_vect_type = "raw_input"):
         super(TrainTestPipeline).__init__()
 
         # Setup the Pipeline device
@@ -78,7 +79,13 @@ class TrainTestPipeline :
 
         # Setup the model 
         self.model = model.to(self.device)
-        self.modelFileName = modelFileName
+
+        # Setup the path to save the model
+        self.modelDirectory = os.path.join(ROOT_FOLDER, 'models')
+        if os.path.exists(self.modelDirectory) == False :
+            os.makedirs(self.modelDirectory)
+            
+        self.modelFileName = os.path.join(self.modelDirectory, modelName) + '_best_model.pt'
 
         # Select the inputs 
         self.f_vect_type = f_vect_type
@@ -122,8 +129,11 @@ class TrainTestPipeline :
         self.valLoss = torch.zeros([self.args.n_epoch])
         self.valAccuracy = torch.zeros([self.args.n_epoch])
 
+        # Best Accuracy
+        best_accuracy = -1.0
+
         # Use Adam as an optimizer
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr = self.args.lr)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr = self.args.lr, weight_decay = self.args.wd)
         # Use BCELoss as loss function
         self.loss_fn = nn.BCEWithLogitsLoss()
 
@@ -167,19 +177,24 @@ class TrainTestPipeline :
                 
                 # Compute and save the accuracy on the validation set
                 self.valAccuracy[epoch] = self.compute_accuracy(val_logits, val_idx)
+
+            if (self.valAccuracy[epoch] > best_accuracy):
+                torch.save(self.model, self.modelFileName)
+                best_accuracy = self.valAccuracy[epoch]
             
             print(f"Epoch {epoch} | Train Loss : {self.trainLOSS[epoch]} | Validation Loss : {self.valLoss[epoch]} | Validation accuracy : {self.valAccuracy[epoch]}")
 
-        torch.save(self.model, self.modelFileName)
 
         return [self.trainLOSS, self.trainAccuracy, self.valLoss, self.valAccuracy] 
+    
     
     def NNTest(self):
         ## Get the matrix associated to the test set
         self.test_set = self.get_set_matrix(set_id = self.data_dict["test_idx"])
 
+        model = torch.load(self.modelFileName)
         ## Evaluate the model on the test set and compute the accuracy
-        self.model.eval()
+        model.eval()
         test_logits = torch.squeeze(self.model(self.test_set))
         
         test_accuracy = self.compute_accuracy(test_logits, self.data_dict["test_idx"])
