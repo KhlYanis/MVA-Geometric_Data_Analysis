@@ -14,7 +14,7 @@ from scipy.spatial import distance
 
 class Adj_matrix : 
 
-    def __init__(self, subjectIDs, root_folder, sort_var = 'SITE_ID'):
+    def __init__(self, subjectIDs, root_folder, sort_var = 'SITE_ID', phenotypic_var = ['SITE_ID', 'SEX']):
         super().__init__()
 
         self.root_folder = root_folder
@@ -33,6 +33,8 @@ class Adj_matrix :
 
         # Build the DataFrame for the relevant subjects
         self.df = self.extract_subjects(self.subjectIDs, sort_var)
+
+        self.phenotypic_var = phenotypic_var
 
     def extract_subjects(self, subjectIDs, sort_variable = 'SITE_ID'):
         # Convert the subjectIDs from str to int 
@@ -91,11 +93,14 @@ class Adj_matrix :
                 # Row associated to subject "j"
                 row_j = self.df[self.df['SUB_ID'] == int(SUB_ID_j)]
 
-                if row_i['SITE_ID'].values == row_j['SITE_ID'].values :
-                    score += 1.0
-
-                if row_i['SEX'].values == row_j['SEX'].values :
-                    score += 1.0
+                if self.phenotypic_var is None:
+                    score+=1 
+                else:   
+                    for var in self.phenotypic_var:
+                        if row_i[var].values == row_j[var].values :
+                            score += 1.0
+                
+ 
 
                 self.score_mat[i, j] = score
                 # Since the score matrix is symmetric
