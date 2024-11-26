@@ -6,6 +6,7 @@ from tqdm import tqdm
 import torch.nn.functional as func
 from torchmetrics import Accuracy
 import os 
+import random
 
 
 
@@ -187,6 +188,84 @@ class TrainTestPipeline :
 
         return [self.trainLOSS, self.trainAccuracy, self.valLoss, self.valAccuracy] 
     
+
+    def NNTrainMiniBatch(self, batch_size):
+       ## Get the matrix associated to training and validation set
+        ## + Setup the metrics tensors  :
+
+        # Train set
+        train_idx = self.data_dict["train_idx"]
+        self.trainLOSS = torch.zeros([self.args.n_epoch])
+        self.trainAccuracy = torch.zeros([self.args.n_epoch])
+    
+        # Validation set
+        val_idx = self.data_dict["val_idx"]
+        self.val_set = self.get_set_matrix(set_id = val_idx)
+        self.valLoss = torch.zeros([self.args.n_epoch])
+        self.valAccuracy = torch.zeros([self.args.n_epoch])
+
+        # Best Accuracy
+        best_accuracy = -1.0
+
+        # Use Adam as an optimizer
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr = self.args.lr, weight_decay = self.args.wd)
+        # Use BCELoss as loss function
+        self.loss_fn = nn.BCEWithLogitsLoss()
+
+        for epoch in range(self.args.n_epoch):
+
+            #######################################
+            ######### ---- TRAINING ---- ##########
+            ####################################### 
+            self.model.train()
+            # Set the gradients to zero
+            self.optimizer.zero_grad()
+
+            # Select a set of indexes in the train set
+            epoch_indexes = random.sample(sorted(train_idx), batch_size)
+            # Get the matrix associated to this set of indexes
+            self.train_set = self.get_set_matrix(set_id = epoch_indexes)
+
+            # Forward the data through the neural network
+            train_logits = torch.squeeze(self.model(self.train_set))
+
+            # Compute the loss then backpropagate
+            loss = self.loss_fn(train_logits[epoch_indexes], self.data_dict["labels"][epoch_indexes])
+            loss.backward()
+
+            # Save the training loss
+            self.trainLOSS[epoch] = loss.item()
+
+            # Update the network parameters 
+            self.optimizer.step()
+
+            # Compute and save the training accuracy
+            self.trainAccuracy[epoch] = self.compute_accuracy(train_logits, epoch_indexes)
+
+            #######################################
+            ######## ---- EVALUATION ---- #########
+            ####################################### 
+            self.model.eval()
+
+            with torch.no_grad():
+                # Forward the validation data through the neural network
+                val_logits = torch.squeeze(self.model(self.val_set))
+
+                # Compute and save the loss on the validation set
+                val_loss = self.loss_fn(val_logits[val_idx], self.data_dict["labels"][val_idx])
+                self.valLoss[epoch] =  val_loss
+                
+                # Compute and save the accuracy on the validation set
+                self.valAccuracy[epoch] = self.compute_accuracy(val_logits, val_idx)
+
+            if (self.valAccuracy[epoch] > best_accuracy):
+                torch.save(self.model, self.modelFileName)
+                best_accuracy = self.valAccuracy[epoch]
+            
+            print(f"Epoch {epoch} | Train Loss : {self.trainLOSS[epoch]} | Validation Loss : {self.valLoss[epoch]} | Validation accuracy : {self.valAccuracy[epoch]}")
+
+
+        return [self.trainLOSS, self.trainAccuracy, self.valLoss, self.valAccuracy]
     
     def NNTest(self):
         ## Get the matrix associated to the test set
