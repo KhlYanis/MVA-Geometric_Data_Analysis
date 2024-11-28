@@ -7,8 +7,7 @@ import torch.nn.functional as func
 from torchmetrics import Accuracy
 import os 
 import random
-
-
+from sklearn.model_selection import KFold
 
 class DataPipeline :
     def __init__(self, args,
@@ -17,6 +16,11 @@ class DataPipeline :
 
         self.nb_patients = nb_patients
         self.args = args
+
+    def get_kfolds(self, n_splits=10, shuffle=True, seed=42):
+        idx = np.arange(self.nb_patients)
+        kf = KFold(n_splits=n_splits, shuffle=shuffle, random_state=seed)
+        return kf.split(idx)
 
 
     def get_set_idx(self, train_ratio = 0.80, val_ratio = 0.10, test_ratio = 0.10, shuffle = True, seed = 42):
@@ -266,6 +270,101 @@ class TrainTestPipeline :
 
 
         return [self.trainLOSS, self.trainAccuracy, self.valLoss, self.valAccuracy]
+    
+
+    def NNTrainMiniBatchKFold(self, data_pipeline, batch_size, n_splits=10):
+        kfold_accuracies = []
+        kfolds = data_pipeline.get_kfolds(n_splits=n_splits)
+
+        for fold, (train_idx, val_idx) in enumerate(kfolds):
+            print(f"Fold {fold + 1}/{n_splits}")
+            
+            # Metrics for this fold
+            self.trainLOSS = torch.zeros([self.args.n_epoch])
+            self.trainAccuracy = torch.zeros([self.args.n_epoch])
+            self.valLoss = torch.zeros([self.args.n_epoch])
+            self.valAccuracy = torch.zeros([self.args.n_epoch])
+
+            # Reset model weights for each fold
+            self.model.apply(self.reset_weights)
+
+            # Use Adam as an optimizer
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.lr, weight_decay=self.args.wd)
+            # Use BCELoss as loss function
+            self.loss_fn = nn.BCEWithLogitsLoss()
+
+            # Training loop for epochs
+            for epoch in range(self.args.n_epoch):
+                #######################################
+                ######### ---- TRAINING ---- ##########
+                #######################################
+                self.model.train()
+
+                # Shuffle training indices for mini-batch sampling
+                train_idx_shuffled = random.sample(sorted(train_idx), len(train_idx))
+                for i in range(0, len(train_idx_shuffled), batch_size):
+                    batch_idx = train_idx_shuffled[i:i + batch_size]
+
+                    # Get the matrix for the current batch
+                    self.train_set = self.get_set_matrix(set_id=batch_idx)
+
+                    # Set the gradients to zero
+                    self.optimizer.zero_grad()
+
+                    # Forward pass
+                    train_logits = torch.squeeze(self.model(self.train_set))
+
+                    # Compute loss and backpropagate
+                    loss = self.loss_fn(train_logits[batch_idx], self.data_dict["labels"][batch_idx])
+                    loss.backward()
+
+                    # Update parameters
+                    self.optimizer.step()
+
+                    # Accumulate loss for the epoch
+                    self.trainLOSS[epoch] += loss.item() / len(train_idx_shuffled)
+
+                # Compute training accuracy for the epoch
+                self.trainAccuracy[epoch] = self.compute_accuracy(train_logits, train_idx)
+
+                #######################################
+                ######## ---- EVALUATION ---- #########
+                #######################################
+                self.model.eval()
+
+                with torch.no_grad():
+                    # Get the matrix for the validation set
+                    self.val_set = self.get_set_matrix(set_id=val_idx)
+
+                    # Forward pass on validation data
+                    val_logits = torch.squeeze(self.model(self.val_set))
+
+                    # Compute validation loss
+                    val_loss = self.loss_fn(val_logits[val_idx], self.data_dict["labels"][val_idx])
+                    self.valLoss[epoch] = val_loss
+
+                    # Compute validation accuracy
+                    self.valAccuracy[epoch] = self.compute_accuracy(val_logits, val_idx)
+
+                print(f"Epoch {epoch} | Train Loss: {self.trainLOSS[epoch]} | Validation Loss: {self.valLoss[epoch]} | Validation Accuracy: {self.valAccuracy[epoch]}")
+
+            # Save the accuracy of the best validation epoch for this fold
+            best_fold_accuracy = max(self.valAccuracy).item()
+            kfold_accuracies.append(best_fold_accuracy)
+            print(f"Fold {fold + 1} Best Validation Accuracy: {best_fold_accuracy}")
+
+        # Compute the average accuracy across all folds
+        mean_accuracy = np.mean(kfold_accuracies)
+        print(f"Mean Accuracy over {n_splits} folds: {mean_accuracy}")
+        return kfold_accuracies
+
+    def reset_weights(self, m):
+        """
+        Reset model weights to ensure independence between folds.
+        """
+        if hasattr(m, 'reset_parameters'):
+            m.reset_parameters()
+
     
     def NNTest(self):
         ## Get the matrix associated to the test set
