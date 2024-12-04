@@ -33,7 +33,7 @@ class visualization :
                                           + self.subjectIDs[idx] + '_correlation.mat')['connectivity']
         
         plotting.plot_matrix(connectivity_matrix, figure=(7, 7), vmin = -1, vmax = 1,
-                title=f"Connectivity matrix - Subject #{self.subjectIDs[idx]}")
+                title=f"Connectivity matrix - Subject #{self.subjectIDs[idx]}", cmap='viridis')
         plt.show()
 
 
